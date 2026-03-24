@@ -1,7 +1,7 @@
 getwd()
 data <- read.csv("data1.csv")
 # STEP 5: Polynomial regression model
-# Adding squared terms to allow nonlinear scaling of sectoral hydrogen demand
+# Adding quadratic terms
 
 model_poly <- lm(
   log_tot_kg ~ 
@@ -48,7 +48,7 @@ plot(observed_values, fitted_values,
      xlab = "Observed log(total hydrogen demand)",
      ylab = "Fitted log(total hydrogen demand)",
      main = "Fitted vs Observed Values - Log-Polynomial Model",
-     pch = 16, col = rgb(0,0,1,0.5)) # semi-transparent points
+     pch = 16, col = rgb(0,0,1,0.5))
 
 # 4. Add 45-degree reference line
 abline(a = 0, b = 1, col = "red", lwd = 2)
@@ -65,7 +65,7 @@ plot(predictor, residuals_poly,
      xlab = "log(Light-duty FCEV hydrogen demand)",
      ylab = "Residuals",
      main = "Residuals vs log_ld_fcev - Log-Polynomial Model",
-     pch = 16, col = rgb(1,0,0,0.5)) # semi-transparent red points
+     pch = 16, col = rgb(1,0,0,0.5))
 
 # 4. Add horizontal line at 0
 abline(h = 0, col = "blue", lwd = 2)
@@ -73,13 +73,14 @@ abline(h = 0, col = "blue", lwd = 2)
 
 #Examples from Project 
 #1 Linear model, OLS and Residuals
-data_xy <- data[, c("solar_kg", "tot_kg")]
+data_xy <- data[, c("mms_ammonia_kg", "tot_kg")]
 data_xy <- na.omit(data_xy)
-subset_10 <- data_xy[1:10, ]
+data_nonzero <- data_xy[data_xy$mms_ammonia_kg > 0, ]
+subset_10 <- data_nonzero[1:10, ]
 subset_10
 
 write.csv(subset_10, "example_pairs1.csv", row.names = FALSE)
-model <- lm(tot_kg ~ solar_kg, data = subset_10)
+model <- lm(tot_kg ~ mms_ammonia_kg, data = subset_10)
 summary(model)
 
 subset_10$fitted <- fitted(model)
@@ -100,17 +101,17 @@ plot(subset_10$fitted / 1e6,
      main = "Residuals vs Fitted (scaled)")
 abline(h = 0)
 
-plot(subset_10$solar_kg / 1e9, subset_10$tot_kg / 1e6,
-     xlab = "Solar energy (billions)",
+plot(subset_10$mms_ammonia_kg / 1e9, subset_10$tot_kg / 1e6,
+     xlab = "Ammonia demand (billions)",
      ylab = "Total kg (millions)",
      main = "OLS With Residual Lines (scaled axes)")
 
-abline(lm(I(tot_kg / 1e6) ~ I(solar_kg / 1e9), data = subset_10),
+abline(lm(I(tot_kg / 1e6) ~ I(mms_ammonia_kg / 1e9), data = subset_10),
        col = "blue", lwd = 2)
 
-segments(subset_10$solar_kg / 1e9,
+segments(subset_10$mms_ammonia_kg / 1e9,
          subset_10$tot_kg / 1e6,
-         subset_10$solar_kg / 1e9,
+         subset_10$mms_ammonia_kg / 1e9,
          subset_10$fitted / 1e6,
          col = "red")
 
@@ -134,22 +135,52 @@ plot(fitted(model_poly), residuals(model_poly),
 abline(h = 0, col = "red", lwd = 2)
 dev.off()
 
-# ── LOESS SMOOTHS ─────────────────────────────────────────────
-# Purpose: Visualise the functional form of each predictor relationship
-# The varying shapes revealed by LOESS (U-shapes, convex, linear)
-# motivate fractional polynomial regression in Chapter 6,
-# where each predictor's transformation is selected from the data
-# rather than fixed at a uniform degree.
+# Cross-Validation
 
-predictors_log <- c("log_ammonia", "log_refineries", "log_metals",
-                    "log_ld_fcev", "log_mhd_fcev", "log_seasonal",
-                    "log_area")
+# Randomly shuffle data
+df.shuffled <- model_data_log[sample(nrow(model_data_log)), ]
 
-for (var in predictors_log) {
-  p <- ggplot(model_data_log, aes_string(x = var, y = "log_tot_kg")) +
-    geom_point(alpha = 0.2, color = "steelblue", size = 0.8) +
-    geom_smooth(method = "loess", color = "red", se = FALSE) +
-    labs(title = paste("log_tot_kg vs", var),
-         x = var, y = "log(Total Hydrogen Demand)")
-  ggsave(paste0("scatter_loess_", var, ".png"), p, width = 8, height = 5)
+# Define number of folds to use for k-fold cross-validation
+K <- 5
+
+# Define max degree of polynomials to fit
+degree <- 5
+
+# Create k equal-sized folds
+folds <- cut(seq(1, nrow(df.shuffled)), breaks = K, labels = FALSE)
+
+# Create object to hold MSE's of models
+mse <- matrix(data = NA, nrow = K, ncol = degree)
+
+# Define predictor variables
+predictors <- c("log_ammonia", "log_refineries", "log_metals",
+                "log_ld_fcev", "log_mhd_fcev", "log_seasonal", "log_area")
+
+# Count unique values per predictor (max usable degree = unique - 1)
+max_degrees <- sapply(predictors, function(p) length(unique(df.shuffled[[p]])) - 1)
+
+# Perform K-fold cross validation
+for (i in 1:K) {
+  
+  # Define training and testing data
+  testIndexes <- which(folds == i, arr.ind = TRUE)
+  testData <- df.shuffled[testIndexes, ]
+  trainData <- df.shuffled[-testIndexes, ]
+  
+  # Use k-fold cv to evaluate models with polynomial degrees 1 through 5
+  for (j in 1:degree) {
+    # Cap each predictor's degree at its max usable degree
+    poly_terms <- paste0(
+      "poly(", predictors, ", ", pmin(j, max_degrees), ")",
+      collapse = " + "
+    )
+    formula_j <- as.formula(paste("log_tot_kg ~", poly_terms))
+    
+    fit.train <- lm(formula_j, data = trainData)
+    fit.test <- predict(fit.train, newdata = testData)
+    mse[i, j] <- mean((fit.test - testData$log_tot_kg)^2)
+  }
 }
+
+# Find MSE for each degree
+colMeans(mse)
