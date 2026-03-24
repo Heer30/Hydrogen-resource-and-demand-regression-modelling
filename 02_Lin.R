@@ -1,10 +1,6 @@
 getwd()
 data <- read.csv("data1.csv")
 # STEP 4: Baseline linear regression model
-# --- Baseline linear model (raw scale) ---
-# Purpose: Provide interpretable benchmark
-# Issue: Poor fit due to zero inflation and skewness
-
 model_linear <- lm(
   tot_kg ~ mms_ammonia_kg +
     mms_refineries_kg +
@@ -34,7 +30,7 @@ plot(predicted, observed,
      main = "Predicted vs Observed Hydrogen Demand",
      pch = 19, col = rgb(0,0,1,0.3)) # semi-transparent blue points
 
-# Add a 45-degree reference line (perfect prediction)
+#45-degree reference line
 abline(a = 0, b = 1, col = "red", lwd = 2)
 
 png("Rplot1.png", width=800, height=600)
