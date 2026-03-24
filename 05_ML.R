@@ -1,6 +1,6 @@
 getwd()
 data <- read.csv("data1.csv")
-#Machine Learning - tree based method
+#Machine Learning: tree based method
 names(data)
 head(data[, c("name", "state_name", 
               "total_resource_minus_total_demand_kg")])
@@ -20,7 +20,7 @@ target <- "total_resource_minus_total_demand_kg"
 # Prepare data
 ml_data <- data[, c(features, target, "name", "state_name")]
 
-# Check for any issues
+# Check issues
 cat("Rows:", nrow(ml_data), "\n")
 cat("Missing values:", sum(is.na(ml_data)), "\n")
 
@@ -87,7 +87,7 @@ top20_counties <- head(ml_data[order(-ml_data$predicted_surplus),
                                  "predicted_surplus")], 20)
 print(top20_counties)
 
-# State level rankings - average predicted surplus per state
+# State level rankings: average predicted surplus per state
 state_rankings <- aggregate(predicted_surplus ~ state_name, 
                             data = ml_data, FUN = mean)
 state_rankings <- state_rankings[order(-state_rankings$predicted_surplus), ]
